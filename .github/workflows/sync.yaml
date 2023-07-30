@@ -1,0 +1,67 @@
+name: Sync upstream kernel repos to Launchpad
+
+on:
+  workflow_dispatch: # Enable manual triggering
+#  schedule:
+#    - cron: '0 * * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v3
+
+      - name: Set up the cache
+        uses: actions/cache@v3
+        with:
+          key: upstream-linux-cache
+          path: ~/.upstream-linux
+
+      - name: Fetch upstream repos
+        run: ./fetch-upstream.sh ~/.upstream-linux
+
+      - name: Set up SSH
+        run: |
+          #
+          # Import private keys
+          #
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.GH_SSH_KEY }}" > ~/.ssh/id_rsa.gh
+          echo "${{ secrets.LP_SSH_KEY }}" > ~/.ssh/id_rsa.lp
+          chmod 600 ~/.ssh/id_rsa.{gh,lp}
+          #
+          # Add known hosts
+          #
+          {
+            ssh-keyscan github.com
+            ssh-keyscan git.launchpad.net
+          } > ~/.ssh/known_hosts
+          #
+          # Configure SSH
+          #
+          {
+            echo "Host github.com"
+            echo "  User juergh"
+            echo "  IdentityFile ~/.ssh/id_rsa.gh"
+            echo "Host git.launchpad.net"
+            echo "  User juergh"
+            echo "  IdentityFile ~/.ssh/id_rsa.lp"
+          } > ~/.ssh/config
+
+      - name: Push to Github
+        env:
+          remote: git@github.com:juergh/upstream-linux
+        run: |
+          cd ~/.upstream-linux
+          git push --all ${{ env.remote }}
+          git push --tags ${{ env.remote }}
+
+      - name: Push to Launchpad
+        env:
+          remote: git+ssh://juergh@git.launchpad.net/~juergh/+git/upstream-linux
+        run: |
+          cd ~/.upstream-linux
+          git push --all ${{ env.remote }}
+          git push --tags ${{ env.remote }}
